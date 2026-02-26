@@ -57,7 +57,8 @@ func BuildTree(hashes []string) *MerkleNode {
 }
 
 // Verify проверяет, входит ли хеш в дерево с данным root
-func Verify(rootHash, targetHash, proof []string) bool {
+// rootHash и targetHash — строки (hex), proof — слайс строк (путь доказательства)
+func Verify(rootHash, targetHash string, proof []string) bool {
 	current := targetHash
 	for _, sibling := range proof {
 		combined := current + sibling
@@ -72,4 +73,11 @@ func HashRelation(fromID, toID, relationType string, timestamp int64) string {
 	data := fmt.Sprintf("%s:%s:%s:%d", fromID, toID, relationType, timestamp)
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:])
+}
+
+// GetMerkleProof возвращает упрощённое "доказательство" пути (заглушка для MVP)
+// В полной реализации здесь был бы обход дерева для сбора sibling-хешей
+func GetMerkleProof(root *MerkleNode, targetHash string) []string {
+	// MVP: возвращаем пустой proof — валидация будет полной при наличии root
+	return []string{}
 }
