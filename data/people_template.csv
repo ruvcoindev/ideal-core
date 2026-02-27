@@ -1,0 +1,5 @@
+name,birth_date,role,flow_status,start_date,end_date,total_amount,tags,notes
+Виталий,1974-10-15,Architect,Active,2024-01-01,,0,"Creator,Navigator",
+Дина,1970-10-03,Partner,Draining,2024-01-01,2026-02-10,0,"Avoidant,Trauma",
+Валя,1949-02-15,Mother,Toxic,2024-01-01,,0,"Narcissist,Control",
+Эдуард,1971-10-17,Client,ToxicResource,2020-01-01,2025-12-31,500000,"Business,Negative",

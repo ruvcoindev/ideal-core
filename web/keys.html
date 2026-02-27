@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IDEAL CORE | Управление ключами</title>
+    <style>
+        :root { --bg: #0f0f1a; --card: #1a1a2e; --text: #e0e0e0; --accent: #00d9ff; --danger: #ff4444; --success: #00ff88; }
+        body { font-family: monospace; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .warning { background: var(--danger); color: white; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .key-card { background: var(--card); padding: 20px; border-radius: 8px; margin: 10px 0; border: 1px solid #333; }
+        .key-value { font-family: monospace; background: #0f0f1a; padding: 10px; border-radius: 4px; word-break: break-all; }
+        button { background: var(--accent); color: #000; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button.danger { background: var(--danger); color: white; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Управление криптографическими ключами</h1>
+        
+        <div class="warning">
+            ⚠️ <strong>КРИТИЧЕСКОЕ ПРЕДУПРЕЖДЕНИЕ</strong><br>
+            Ваш приватный ключ — это ваша личность в сети.<br>
+            • НИКОГДА не передавайте его третьим лицам<br>
+            • НИКОГДА не загружайте в облако без шифрования<br>
+            • НИКОГДА не храните в открытом виде<br>
+            Потеря ключа = потеря доступа. Компрометация = потеря контроля.
+        </div>
+
+        <div class="key-card">
+            <h3>🗝️ Публичный ключ (ID в сети)</h3>
+            <div class="key-value" id="publicKey">Загрузка...</div>
+            <button onclick="copyToClipboard('publicKey')">📋 Копировать</button>
+            <button onclick="downloadKey('public')">💾 Скачать</button>
+        </div>
+
+        <div class="key-card">
+            <h3>🔒 Приватный ключ (НИКОМУ НЕ ПОКАЗЫВАТЬ)</h3>
+            <button onclick="togglePrivate()">👁️ Показать/Скрыть</button>
+            <button onclick="downloadKey('private')" class="danger">💾 Скачать (зашифровано)</button>
+            <div class="key-value hidden" id="privateKey">••••••••••••••••</div>
+            <p><small>Для скачивания потребуется пароль. Храните в безопасном месте.</small></p>
+        </div>
+
+        <div class="key-card">
+            <h3>🌐 Yggdrasil IPv6</h3>
+            <div class="key-value" id="yggIP">Загрузка...</div>
+            <button onclick="copyToClipboard('yggIP')">📋 Копировать</button>
+        </div>
+
+        <div class="key-card">
+            <h3>💾 Резервная копия</h3>
+            <p>Создайте зашифрованную резервную копию ваших ключей.</p>
+            <input type="password" id="backupPass" placeholder="Пароль для шифрования" style="width:100%;padding:10px;margin:5px 0;background:#0f0f1a;border:1px solid #333;color:var(--text);">
+            <button onclick="createBackup()">🔐 Создать резервную копию</button>
+            <p><small>Резервная копия будет зашифрована указанным паролем.</small></p>
+        </div>
+    </div>
+
+    <script>
+        async function loadKeys() {
+            try {
+                const res = await fetch('/api/keys', {
+                    headers: { 'Authorization': localStorage.getItem('ideal_token') }
+                });
+                const data = await res.json();
+                document.getElementById('publicKey').textContent = data.public_key;
+                document.getElementById('yggIP').textContent = data.yggdrasil_ip;
+            } catch (e) {
+                console.error('Failed to load keys:', e);
+            }
+        }
+
+        function togglePrivate() {
+            const el = document.getElementById('privateKey');
+            el.classList.toggle('hidden');
+            if (!el.classList.contains('hidden')) {
+                el.textContent = '•••••••••••••••• [Расшифровка требует локального доступа]';
+            }
+        }
+
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Скопировано в буфер обмена');
+            });
+        }
+
+        function downloadKey(type) {
+            if (type === 'private') {
+                alert('⚠️ Приватный ключ может быть скачан только локально через CLI.\n\nКоманда:\n  ideal-core backup --export-private --encrypt');
+                return;
+            }
+            const key = document.getElementById('publicKey').textContent;
+            const blob = new Blob([key], {type: 'text/plain'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ideal-core-public.key';
+            a.click();
+        }
+
+        function createBackup() {
+            const pass = document.getElementById('backupPass').value;
+            if (!pass) {
+                alert('Введите пароль для шифрования');
+                return;
+            }
+            alert('🔐 Резервная копия создаётся...\n\nВ продакшене: ключи шифруются локально с использованием вашего пароля и скачиваются как файл .backup.enc');
+        }
+
+        loadKeys();
+    </script>
+</body>
+</html>
