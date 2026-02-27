@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>IDEAL CORE</title>
+    <script>
+        const token = localStorage.getItem('ideal_token');
+        window.location.href = token ? '/dashboard.html' : '/login.html';
+    </script>
+</head>
+<body style="background:#0f0f1a;color:#e0e0e0;font-family:monospace;text-align:center;padding:50px;">
+    <h1>🗝️ IDEAL CORE</h1><p>Перенаправление...</p>
+    <p><a href="/login.html" style="color:#00d9ff">Войти вручную</a></p>
+</body>
+</html>
