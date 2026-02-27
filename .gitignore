@@ -1,0 +1,10 @@
+# Ключи и секреты
+*.key
+private.key
+public.key
+.ideal-core/
+data/*.db
+*.env
+.ideal-core/
+*.key
+data/*.db
