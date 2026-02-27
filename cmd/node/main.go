@@ -26,6 +26,7 @@ var (
 	password   = flag.String("password", "", "Password for backup encryption/decryption")
 	yggPath    = flag.String("yggdrasil", "/usr/bin/yggdrasil", "Path to yggdrasil binary")
 	port       = flag.String("port", "8080", "Port for local web server")
+	bindAddr   = flag.String("bind", "127.0.0.1", "Address to bind web server (127.0.0.1 for local, 0.0.0.0 for LAN)")
 )
 
 func main() {
@@ -65,11 +66,10 @@ func main() {
 		}
 		fmt.Printf("✅ New keypair generated:\n")
 		fmt.Printf("   Public ID: %s\n", kp.ToHex())
-		fmt.Printf("   Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(kp.PublicKey))
+		fmt.Printf("   App Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(kp.PublicKey))
 		fmt.Printf("   ⚠️  %s", crypto.SecurityWarning())
 		fmt.Printf("   Private key saved to: %s\n", keyPath)
 		fmt.Printf("   Public key saved to: %s\n", pubKeyPath)
-		fmt.Printf("   To create encrypted backup: -export-backup backup.enc -password YOUR_PASSWORD\n")
 		return
 	}
 
@@ -100,14 +100,16 @@ func main() {
 	}
 
 	fmt.Printf("🗝️  Node ID: %s\n", kp.ToHex()[:16]+"...")
-	yggIP := crypto.DeriveYggdrasilIP(kp.PublicKey)
-	fmt.Printf("🌐 Yggdrasil IP: %s\n", yggIP)
-	fmt.Printf("🌐 Web UI: http://[%s]:%s\n", yggIP, *port)
+	appYggIP := crypto.DeriveYggdrasilIP(kp.PublicKey)
+	fmt.Printf("🌐 App Yggdrasil IP: %s\n", appYggIP)
+	fmt.Printf("🌐 Web UI: http://%s:%s\n", *bindAddr, *port)
 
 	// Check Yggdrasil availability
 	yggAvailable := checkYggdrasil(*yggPath)
 	if !yggAvailable {
 		log.Printf("⚠️  Yggdrasil not found at %s, using fallback transport", *yggPath)
+	} else {
+		fmt.Printf("✅ Yggdrasil service detected\n")
 	}
 
 	// Connect to Yggdrasil mesh
@@ -124,8 +126,8 @@ func main() {
 		}
 	}
 
-	// Start local web server (bound to Yggdrasil IP)
-	go startWebServer(*port, kp)
+	// Start local web server (BIND TO LOCALHOST, NOT YGG IP)
+	go startWebServer(*bindAddr, *port, kp, appYggIP)
 
 	// Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -144,7 +146,6 @@ func main() {
 	go func() {
 		if err := ygg.Receive(ctx, func(msg []byte) error {
 			fmt.Printf("📥 Received %d bytes (encrypted)\n", len(msg))
-			// Здесь можно расшифровать и обработать сообщение
 			return nil
 		}); err != nil && err != context.Canceled {
 			log.Printf("Receive error: %v", err)
@@ -160,16 +161,17 @@ func main() {
 }
 
 // startWebServer запускает локальный веб-сервер
-func startWebServer(port string, kp *crypto.KeyPair) {
+func startWebServer(bindAddr, port string, kp *crypto.KeyPair, appYggIP string) {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "🗝️ IDEAL CORE\nNode ID: %s\nYggdrasil IP: %s\n", kp.ToHex()[:16], crypto.DeriveYggdrasilIP(kp.PublicKey))
+		fmt.Fprintf(w, "🗝️ IDEAL CORE\nNode ID: %s\nApp Yggdrasil IP: %s\n", kp.ToHex()[:16], appYggIP)
 	})
 	http.HandleFunc("/api/keys", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"public_key":"%s","yggdrasil_ip":"%s"}`, kp.ToHex(), crypto.DeriveYggdrasilIP(kp.PublicKey))
+		fmt.Fprintf(w, `{"public_key":"%s","app_yggdrasil_ip":"%s"}`, kp.ToHex(), appYggIP)
 	})
-	addr := fmt.Sprintf("[%s]:%s", crypto.DeriveYggdrasilIP(kp.PublicKey), port)
-	log.Printf("🌐 Web server listening on %s", addr)
+	
+	addr := fmt.Sprintf("%s:%s", bindAddr, port)
+	log.Printf("🌐 Web server listening on http://%s", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Printf("Web server error: %v", err)
 	}
@@ -214,10 +216,13 @@ func handleImportBackup(backupPath, password string) {
 	}
 	fmt.Printf("✅ Backup imported successfully!\n")
 	fmt.Printf("   Public ID: %s\n", kp.ToHex())
-	fmt.Printf("   Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(kp.PublicKey))
+	fmt.Printf("   App Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(kp.PublicKey))
 }
 
 func checkYggdrasil(path string) bool {
+	if path == "" {
+		return false
+	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return false
 	}

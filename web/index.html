@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IDEAL CORE | Личный кабинет</title>
+    <style>
+        :root { --bg: #0f0f1a; --card: #1a1a2e; --text: #e0e0e0; --accent: #00d9ff; }
+        body { font-family: monospace; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: var(--card); padding: 20px; border-radius: 8px; margin: 10px 0; border: 1px solid #333; }
+        .key-value { font-family: monospace; background: #0f0f1a; padding: 10px; border-radius: 4px; word-break: break-all; }
+        button { background: var(--accent); color: #000; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗝️ IDEAL CORE</h1>
+        
+        <div class="card">
+            <h3>🔐 Ваш ключ</h3>
+            <div class="key-value" id="publicKey">Загрузка...</div>
+            <button onclick="copyKey()">📋 Копировать</button>
+        </div>
+
+        <div class="card">
+            <h3>🌐 Yggdrasil IP</h3>
+            <div class="key-value" id="yggIP">Загрузка...</div>
+        </div>
+
+        <div class="card">
+            <h3>➕ Добавить человека</h3>
+            <input type="text" id="personName" placeholder="Имя" style="width:100%;padding:10px;margin:5px 0;background:#0f0f1a;border:1px solid #333;color:var(--text);">
+            <input type="date" id="personBirth" style="width:100%;padding:10px;margin:5px 0;background:#0f0f1a;border:1px solid #333;color:var(--text);">
+            <button onclick="addPerson()">Добавить</button>
+        </div>
+
+        <div class="card">
+            <h3>📋 Люди</h3>
+            <div id="peopleList">Загрузка...</div>
+        </div>
+    </div>
+
+    <script>
+        const API = '/api';
+        
+        async function loadKeys() {
+            try {
+                const res = await fetch(`${API}/keys`);
+                const data = await res.json();
+                document.getElementById('publicKey').textContent = data.public_key;
+                document.getElementById('yggIP').textContent = data.app_yggdrasil_ip;
+            } catch (e) {
+                console.error('Failed to load keys:', e);
+            }
+        }
+
+        function copyKey() {
+            const key = document.getElementById('publicKey').textContent;
+            navigator.clipboard.writeText(key).then(() => alert('Скопировано!'));
+        }
+
+        async function addPerson() {
+            const name = document.getElementById('personName').value;
+            const birth = document.getElementById('personBirth').value;
+            if (!name || !birth) { alert('Заполните имя и дату'); return; }
+            
+            const res = await fetch(`${API}/people/add`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, birth_date: birth, relation: 'Partner' })
+            });
+            if (res.ok) {
+                alert('Добавлено!');
+                document.getElementById('personName').value = '';
+                loadPeople();
+            } else {
+                alert('Ошибка: ' + await res.text());
+            }
+        }
+
+        async function loadPeople() {
+            try {
+                const res = await fetch(`${API}/people`);
+                const people = await res.json();
+                const list = document.getElementById('peopleList');
+                list.innerHTML = people.map(p => 
+                    `<div><b>${p.name}</b> (${p.birth_date}) — Σ${p.sum_freq}</div>`
+                ).join('') || 'Пока пусто';
+            } catch (e) {
+                document.getElementById('peopleList').textContent = 'Ошибка загрузки';
+            }
+        }
+
+        loadKeys();
+        loadPeople();
+    </script>
+</body>
+</html>

@@ -1,10 +1,23 @@
 # Ключи и секреты
 *.key
-private.key
-public.key
-.ideal-core/
-data/*.db
+*.pem
 *.env
-.ideal-core/
-*.key
+.secrets/
+.ideal-core-secrets/
+
+# Базы данных
 data/*.db
+data/*.sqlite
+
+# Логи
+*.log
+logs/
+
+# ОС
+.DS_Store
+Thumbs.db
+
+# Сборка
+/build/
+/dist/
+*.exe
