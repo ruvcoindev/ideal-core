@@ -1,97 +1,93 @@
-// Package layers — слои модели человека
-//
-// Контекст:
-// Человек — многомерная система. Каждый слой влияет на остальные:
-// - Энергетический блок → гормональный сбой → психологическая проблема
-// - Психологическая травма → энергетический зажим → физический симптом
-//
-// Этот файл реализует эндокринный слой.
 package layers
 
-// EndocrineLayer — эндокринный слой для одной чакры
+import "ideal-core/pkg/chakra"
+
+// EndocrineLayer связывает чакру с эндокринной железой
 type EndocrineLayer struct {
-	ChakraIndex      int      `json:"chakra_index"`
-	Gland            string   `json:"gland"`
-	GlandEn          string   `json:"gland_en"`
-	Hormones         []string `json:"hormones"`
-	Functions        []string `json:"functions"`
-	ImbalanceSigns   []string `json:"imbalance_signs"`
-	LabTests         []string `json:"lab_tests"`
-	SupportMethods   []string `json:"support_methods"`
+	Chakra          chakra.ChakraIndex
+	Gland           string
+	Hormones        []string
+	Dysregulation   []string
+	RecommendedTests []string // Лабораторные тесты для проверки
 }
 
-// GetEndocrineLayers возвращает эндокринные слои для всех чакр
-func GetEndocrineLayers() []EndocrineLayer {
-	return []EndocrineLayer{
-		{
-			ChakraIndex:    0,
-			Gland:          "Надпочечники",
-			GlandEn:        "Adrenal Glands",
-			Hormones:       []string{"Кортизол", "Адреналин", "ДГЭА-С"},
-			Functions:      []string{"Реакция на стресс", "Регуляция давления", "Иммунная модуляция"},
-			ImbalanceSigns: []string{"Хроническая усталость", "Тревожность", "Нарушения веса"},
-			LabTests:       []string{"Кортизол (слюна, 4 точки)", "ДГЭА-С", "Адреналин/Норадреналин"},
-			SupportMethods: []string{"Ашваганда", "Витамин C", "Сон до 23:00"},
-		},
-		{
-			ChakraIndex:    1,
-			Gland:          "Гонады",
-			GlandEn:        "Gonads",
-			Hormones:       []string{"Эстроген", "Тестостерон", "Прогестерон"},
-			Functions:      []string{"Репродукция", "Либидо", "Эмоциональный баланс"},
-			ImbalanceSigns: []string{"Гормональные сбои", "ПМС", "Снижение либидо"},
-			LabTests:       []string{"Эстрадиол", "Тестостерон общий", "Прогестерон"},
-			SupportMethods: []string{"Витекс", "Мака", "Омега-3"},
-		},
-		{
-			ChakraIndex:    2,
-			Gland:          "Поджелудочная железа",
-			GlandEn:        "Pancreas",
-			Hormones:       []string{"Инсулин", "Глюкагон"},
-			Functions:      []string{"Регуляция сахара", "Пищеварение", "Метаболизм"},
-			ImbalanceSigns: []string{"Диабет", "Нарушения пищеварения", "Проблемы с весом"},
-			LabTests:       []string{"Глюкоза", "Инсулин", "Гликированный гемоглобин"},
-			SupportMethods: []string{"Хром", "Корица", "Регулярное питание"},
-		},
-		{
-			ChakraIndex:    3,
-			Gland:          "Тимус",
-			GlandEn:        "Thymus",
-			Hormones:       []string{"Тимозин", "Т-лимфоциты"},
-			Functions:      []string{"Иммунная регуляция", "Созревание Т-клеток"},
-			ImbalanceSigns: []string{"Аутоиммунные заболевания", "Частые инфекции"},
-			LabTests:       []string{"Иммунограмма", "Т-клетки субпопуляции"},
-			SupportMethods: []string{"Витамин D", "Цинк", "Глубокое дыхание"},
-		},
-		{
-			ChakraIndex:    4,
-			Gland:          "Щитовидная железа",
-			GlandEn:        "Thyroid",
-			Hormones:       []string{"Т3", "Т4", "Кальцитонин"},
-			Functions:      []string{"Метаболизм", "Рост и развитие", "Энергетический баланс"},
-			ImbalanceSigns: []string{"Гипотиреоз/гипертиреоз", "Нарушения веса", "Усталость"},
-			LabTests:       []string{"ТТГ", "Свободный Т3", "Свободный Т4", "Антитела к ТПО"},
-			SupportMethods: []string{"Йод", "Селен", "Управление стрессом"},
-		},
-		{
-			ChakraIndex:    5,
-			Gland:          "Гипофиз",
-			GlandEn:        "Pituitary",
-			Hormones:       []string{"TSH", "ACTH", "GH", "FSH", "LH"},
-			Functions:      []string{"Мастер-железа", "Регуляция других желёз", "Цикл сна"},
-			ImbalanceSigns: []string{"Гормональные сбои", "Нарушения сна", "Неврологические расстройства"},
-			LabTests:       []string{"Пролактин", "СТГ", "АКТГ"},
-			SupportMethods: []string{"Медитация", "Достаточный сон", "Омега-3"},
-		},
-		{
-			ChakraIndex:    6,
-			Gland:          "Эпифиз",
-			GlandEn:        "Pineal",
-			Hormones:       []string{"Мелатонин", "Серотонин"},
-			Functions:      []string{"Циркадные ритмы", "Сон и бодрствование", "Духовное восприятие"},
-			ImbalanceSigns: []string{"Нарушения сна", "Депрессия", "Сезонное расстройство"},
-			LabTests:       []string{"Мелатонин (слюна)", "Серотонин"],
-			SupportMethods: []string{"Тёмная комната", "Солнечный свет днём", "Магний"},
-		},
+// EndocrineMap — карта связей чакра-железа
+var EndocrineMap = map[chakra.ChakraIndex]EndocrineLayer{
+	chakra.Muladhara: {
+		Chakra:          chakra.Muladhara,
+		Gland:           "Надпочечники",
+		Hormones:        []string{"Кортизол", "Адреналин", "Норадреналин"},
+		Dysregulation:   []string{"Хронический стресс", "Усталость надпочечников", "Тревожность"},
+		RecommendedTests: []string{"Кортизол слюна (4 точки)", "DHEA-S", "Адреналин/Норадреналин моча"},
+	},
+	chakra.Svadhisthana: {
+		Chakra:          chakra.Svadhisthana,
+		Gland:           "Гонады (яичники/яички)",
+		Hormones:        []string{"Эстрадиол", "Прогестерон", "Тестостерон", "ЛГ", "ФСГ"},
+		Dysregulation:   []string{"ПМС", "Нарушения цикла", "Снижение либидо", "Эмоциональные качели"},
+		RecommendedTests: []string{"Половые гормоны панель (день 3-5 цикла)", "ГСПГ", "Пролактин"},
+	},
+	chakra.Manipura: {
+		Chakra:          chakra.Manipura,
+		Gland:           "Поджелудочная железа",
+		Hormones:        []string{"Инсулин", "Глюкагон", "С-пептид"},
+		Dysregulation:   []string{"Инсулинорезистентность", "Скачки сахара", "Эмоциональный голод"},
+		RecommendedTests: []string{"Глюкоза натощак", "Инсулин натощак", "HOMA-IR", "Гликированный гемоглобин"},
+	},
+	chakra.Anahata: {
+		Chakra:          chakra.Anahata,
+		Gland:           "Тимус (вилочковая железа)",
+		Hormones:        []string{"Тимулин", "Тимозин", "Цитокины"},
+		Dysregulation:   []string{"Снижение иммунитета", "Частые простуды", "Аутоиммунные реакции"},
+		RecommendedTests: []string{"Иммунограмма", "Витамин D", "Цинк", "Селен"},
+	},
+	chakra.Vishuddha: {
+		Chakra:          chakra.Vishuddha,
+		Gland:           "Щитовидная железа",
+		Hormones:        []string{"ТТГ", "Т3 свободный", "Т4 свободный", "Антитела к ТПО"},
+		Dysregulation:   []string{"Гипотиреоз", "Гипертиреоз", "Узелки", "Проблемы с голосом"},
+		RecommendedTests: []string{"ТТГ", "Т3 св.", "Т4 св.", "АТ-ТПО", "АТ-ТГ", "УЗИ щитовидной железы"},
+	},
+	chakra.Ajna: {
+		Chakra:          chakra.Ajna,
+		Gland:           "Гипофиз",
+		Hormones:        []string{"СТГ", "Пролактин", "АКТГ", "ТТГ", "ЛГ", "ФСГ"},
+		Dysregulation:   []string{"Дисбаланс оси HPA", "Нарушения цикла", "Проблемы со сном"},
+		RecommendedTests: []string{"Пролактин", "АКТГ", "Кортизол", "ИФР-1"},
+	},
+	chakra.Sahasrara: {
+		Chakra:          chakra.Sahasrara,
+		Gland:           "Эпифиз (шишковидная железа)",
+		Hormones:        []string{"Мелатонин", "Серотонин"},
+		Dysregulation:   []string{"Бессонница", "Сезонная депрессия", "Нарушения циркадных ритмов"},
+		RecommendedTests: []string{"Мелатонин слюна (вечер)", "Серотонин кровь", "Витамин B6", "Магний"},
+	},
+}
+
+// GetEndocrineLayers возвращает слои для активных чакр
+func GetEndocrineLayers(activeChakras []chakra.ChakraIndex) []EndocrineLayer {
+	var layers []EndocrineLayer
+	for _, idx := range activeChakras {
+		if layer, ok := EndocrineMap[idx]; ok {
+			layers = append(layers, layer)
+		}
 	}
+	return layers
+}
+
+// GetRecommendedTests возвращает список рекомендованных анализов
+func GetRecommendedTests(activeChakras []chakra.ChakraIndex) []string {
+	tests := make(map[string]bool)
+	for _, idx := range activeChakras {
+		if layer, ok := EndocrineMap[idx]; ok {
+			for _, t := range layer.RecommendedTests {
+				tests[t] = true
+			}
+		}
+	}
+	var result []string
+	for t := range tests {
+		result = append(result, t)
+	}
+	return result
 }

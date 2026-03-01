@@ -1,255 +1,210 @@
-
-
-// Package recommendations — рекомендательная система
-// 
-// Философия:
-// Обычный человек не знает:
-// 1. Какие анализы сдавать
-// 2. Как интерпретировать результаты
-// 3. Что делать с полученными данными
-// 
-// Эта система:
-// - Сопоставляет симптомы с возможными дисбалансами
-// - Рекомендует анализы по приоритету
-// - Интерпретирует результаты в контексте чакр
-// - Даёт персонализированные рекомендации
-// 
-// Важно:
-// Это НЕ замена врачу! Система помогает:
-// - Подготовиться к визиту к врачу
-// - Понять, какие вопросы задать
-// - Отслеживать динамику
 package recommendations
 
 import (
+	"ideal-core/pkg/chakra"
 	"ideal-core/pkg/chakra/layers"
-	"ideal-core/pkg/bio"
+	"sort"
+	"strings"
 )
 
-// LabTestEngine — движок рекомендаций по анализам
-// 
-// Как работает:
-// 1. Пользователь вводит симптомы
-// 2. Система определяет возможные дисбалансы по чакрам
-// 3. Сопоставляет с эндокринными корреляциями
-// 4. Формирует персонализированный список анализов
-// 5. Объясняет, зачем каждый анализ
-// 6. После получения результатов — интерпретирует в контексте
+// SymptomDB — база симптомов для сопоставления с чакрами
+type SymptomDB struct {
+	entries map[string][]chakra.ChakraIndex
+}
+
+// NewSymptomDB создаёт базу симптомов
+func NewSymptomDB() *SymptomDB {
+	db := &SymptomDB{entries: make(map[string][]chakra.ChakraIndex)}
+	db.loadDefaults()
+	return db
+}
+
+func (db *SymptomDB) loadDefaults() {
+	// Муладхара
+	db.entries["страх"] = []chakra.ChakraIndex{chakra.Muladhara}
+	db.entries["тревога"] = []chakra.ChakraIndex{chakra.Muladhara}
+	db.entries["усталость"] = []chakra.ChakraIndex{chakra.Muladhara, chakra.Manipura}
+	
+	// Свадхистана
+	db.entries["вина"] = []chakra.ChakraIndex{chakra.Svadhisthana}
+	db.entries["желания"] = []chakra.ChakraIndex{chakra.Svadhisthana}
+	db.entries["цикл"] = []chakra.ChakraIndex{chakra.Svadhisthana}
+	
+	// Манипура
+	db.entries["гнев"] = []chakra.ChakraIndex{chakra.Manipura}
+	db.entries["самооценка"] = []chakra.ChakraIndex{chakra.Manipura}
+	db.entries["сахар"] = []chakra.ChakraIndex{chakra.Manipura}
+	
+	// Анахата
+	db.entries["обида"] = []chakra.ChakraIndex{chakra.Anahata}
+	db.entries["сердце"] = []chakra.ChakraIndex{chakra.Anahata}
+	db.entries["одиночество"] = []chakra.ChakraIndex{chakra.Anahata}
+	
+	// Вишудха
+	db.entries["горло"] = []chakra.ChakraIndex{chakra.Vishuddha}
+	db.entries["голос"] = []chakra.ChakraIndex{chakra.Vishuddha}
+	db.entries["щитовидка"] = []chakra.ChakraIndex{chakra.Vishuddha}
+	
+	// Аджна
+	db.entries["интуиция"] = []chakra.ChakraIndex{chakra.Ajna}
+	db.entries["головная боль"] = []chakra.ChakraIndex{chakra.Ajna}
+	db.entries["сны"] = []chakra.ChakraIndex{chakra.Ajna}
+	
+	// Сахасрара
+	db.entries["смысл"] = []chakra.ChakraIndex{chakra.Sahasrara}
+	db.entries["бессонница"] = []chakra.ChakraIndex{chakra.Sahasrara}
+	db.entries["депрессия"] = []chakra.ChakraIndex{chakra.Sahasrara}
+}
+
+// FindChakrasBySymptom находит чакры по симптому
+func (db *SymptomDB) FindChakrasBySymptom(symptom string) []chakra.ChakraIndex {
+	symptomLower := strings.ToLower(symptom)
+	for key, chakras := range db.entries {
+		if strings.Contains(symptomLower, key) {
+			return chakras
+		}
+	}
+	return nil
+}
+
+// LabTest — лабораторный тест
+type LabTest struct {
+	Name        string
+	Priority    int    // 1-10, чем выше — тем важнее
+	Category    string // "Hormone", "Vitamin", "Mineral", "Immune"
+	Chakra      chakra.ChakraIndex
+	Description string
+}
+
+// LabTestEngine — движок рекомендаций анализов
 type LabTestEngine struct {
-	// EndocrineLayers — эндокринные слои чакр
-	EndocrineLayers []layers.EndocrineLayer
-	
-	// SymptomDatabase — база симптомов и их связей с системами
-	SymptomDatabase SymptomDB
-	
-	// ReferenceTables — таблицы норм (возраст, пол, циклы)
-	ReferenceTables ReferenceTables
+	symptomDB *SymptomDB
 }
 
-// TestRecommendation — персонализированная рекомендация по анализу
-type TestRecommendation struct {
-	// Priority — приоритет (1-критичный, 2-важный, 3-рекомендуемый)
-	Priority int `json:"priority"`
-	
-	// TestName — название анализа
-	TestName string `json:"test_name"`
-	
-	// TestNameEn — название для лаборатории
-	TestNameEn string `json:"test_name_en"`
-	
-	// EstimatedCost — ориентировочная стоимость (руб)
-	EstimatedCost int `json:"estimated_cost"`
-	
-	// WhyThisTest — объяснение, зачем этот анализ
-	WhyThisTest string `json:"why_this_test"`
-	
-	// RelatedChakras — связанные чакры
-	RelatedChakras []string `json:"related_chakras"`
-	
-	// RelatedSystems — связанные системы (эндокринная, нервная и т.д.)
-	RelatedSystems []string `json:"related_systems"`
-	
-	// Preparation — как подготовиться
-	Preparation []string `json:"preparation"`
-	
-	// NextSteps — что делать после получения результата
-	NextSteps []string `json:"next_steps"`
+// NewLabTestEngine создаёт движок
+func NewLabTestEngine() *LabTestEngine {
+	return &LabTestEngine{
+		symptomDB: NewSymptomDB(),
+	}
 }
 
-// InterpretationResult — интерпретация результатов анализов
-// 
-// Концепция:
-// Лаборатория выдаёт цифры, но человек не понимает:
-// - Это норма или нет?
-// - Если не норма, то насколько критично?
-// - С чем это связано?
-// - Что делать?
-// 
-// Эта структура даёт контекстную интерпретацию.
-type InterpretationResult struct {
-	// TestName — название анализа
-	TestName string `json:"test_name"`
+// RecommendTests генерирует рекомендации по анализам
+func (e *LabTestEngine) RecommendTests(symptoms []string, activeChakras []chakra.ChakraIndex) []LabTest {
+	var tests []LabTest
 	
-	// UserValue — значение пользователя
-	UserValue float64 `json:"user_value"`
-	
-	// Unit — единица измерения
-	Unit string `json:"unit"`
-	
-	// Status — статус (low, normal, high, critical)
-	Status string `json:"status"`
-	
-	// Percentile — процентиль (насколько далеко от нормы)
-	Percentile float64 `json:"percentile"`
-	
-	// ChakraCorrelation — какая чакра связана
-	ChakraCorrelation string `json:"chakra_correlation"`
-	
-	// PossibleCauses — возможные причины отклонения
-	PossibleCauses []string `json:"possible_causes"`
-	
-	// Recommendations — рекомендации
-	Recommendations []string `json:"recommendations"`
-	
-	// WhenToSeeDoctor — когда нужно к врачу
-	WhenToSeeDoctor string `json:"when_to_see_doctor"`
-	
-	// FollowUpTests — какие анализы сдать дополнительно
-	FollowUpTests []string `json:"follow_up_tests"`
-}
-
-// GenerateTestRecommendations генерирует рекомендации по анализам
-// 
-// Входные данные:
-// - symptoms — симптомы пользователя
-// - age — возраст (влияет на нормы)
-// - sex — пол (влияет на нормы)
-// - cyclePhase — фаза цикла для женщин (влияет на гормональные нормы)
-// 
-// Выходные данные:
-// - Отсортированный список анализов по приоритету
-// - С объяснением, зачем каждый анализ
-// - С ориентировочной стоимостью
-// 
-// Пример:
-// ```go
-// engine := NewLabTestEngine()
-// recommendations := engine.GenerateTestRecommendations(
-//     []string{"усталость", "тревожность", "проблемы со сном"},
-//     35,
-//     "female",
-//     "follicular",
-// )
-// ```
-func (e *LabTestEngine) GenerateTestRecommendations(
-	symptoms []string,
-	age int,
-	sex string,
-	cyclePhase string,
-) []TestRecommendation {
-	// 1. Определяем возможные дисбалансы по симптомам
-	possibleImbalances := e.SymptomDatabase.MatchSymptoms(symptoms)
-	
-	// 2. Сопоставляем с чакрами
-	relatedChakras := e.mapImbalancesToChakras(possibleImbalances)
-	
-	// 3. Получаем эндокринные корреляции
-	endocrineLayers := GetEndocrineLayers()
-	
-	// 4. Формируем список анализов
-	var recommendations []TestRecommendation
-	
-	for _, chakraIndex := range relatedChakras {
-		layer := endocrineLayers[chakraIndex]
-		
-		for _, test := range layer.LabTests {
-			rec := TestRecommendation{
-				Priority:       test.Priority,
-				TestName:       test.TestName,
-				TestNameEn:     test.TestNameEn,
-				EstimatedCost:  test.Cost,
-				WhyThisTest:    test.Why,
-				RelatedChakras: []string{getChakraName(chakraIndex)},
-				RelatedSystems: []string{"Эндокринная", layer.Gland},
-				Preparation:    test.Preparation,
-				NextSteps: []string{
-					"Сдать анализ в лаборатории",
-					"Загрузить результаты в систему",
-					"Получить интерпретацию",
-				},
-			}
-			recommendations = append(recommendations, rec)
+	// 1. Добавляем тесты из эндокринных слоёв
+	endocrineLayers := layers.GetEndocrineLayers(activeChakras)
+	for _, layer := range endocrineLayers {
+		for _, testName := range layer.RecommendedTests {
+			tests = append(tests, LabTest{
+				Name:        testName,
+				Priority:    7,
+				Category:    "Hormone",
+				Chakra:      layer.Chakra,
+				Description: "Рекомендовано при дисбалансе " + layer.Gland,
+			})
 		}
 	}
 	
-	// 5. Сортируем по приоритету
-	sortByPriority(recommendations)
-	
-	// 6. Удаляем дубликаты
-	recommendations = deduplicateTests(recommendations)
-	
-	return recommendations
-}
-
-// InterpretResults интерпретирует результаты анализов
-// 
-// Концепция:
-// Лаборатория: "Кортизол = 800 нмоль/л"
-// Система: "Кортизол повышен на 26% от верхней границы нормы.
-//           Это указывает на хронический стресс и возможное выгорание надпочечников.
-//           Связано с дисбалансом Муладхары и Манипуры.
-//           Рекомендации: ..."
-func (e *LabTestEngine) InterpretResults(
-	testName string,
-	value float64,
-	age int,
-	sex string,
-	cyclePhase string,
-) InterpretationResult {
-	// 1. Находим референсные значения
-	reference := e.ReferenceTables.GetReference(testName, age, sex, cyclePhase)
-	
-	// 2. Определяем статус
-	status := determineStatus(value, reference.Min, reference.Max)
-	
-	// 3. Вычисляем процентиль
-	percentile := calculatePercentile(value, reference.Min, reference.Max)
-	
-	// 4. Находим чакральную корреляцию
-	chakraCorrelation := e.mapTestToChakra(testName)
-	
-	// 5. Формируем возможные причины
-	possibleCauses := e.getPossibleCauses(testName, status)
-	
-	// 6. Генерируем рекомендации
-	recommendations := e.generateRecommendations(testName, status, chakraCorrelation)
-	
-	// 7. Определяем, когда к врачу
-	whenToSeeDoctor := determineWhenToSeeDoctor(testName, status, value)
-	
-	// 8. Рекомендуемые дополнительные анализы
-	followUpTests := e.getFollowUpTests(testName, status)
-	
-	return InterpretationResult{
-		TestName:          testName,
-		UserValue:         value,
-		Unit:              reference.Unit,
-		Status:            status,
-		Percentile:        percentile,
-		ChakraCorrelation: chakraCorrelation,
-		PossibleCauses:    possibleCauses,
-		Recommendations:   recommendations,
-		WhenToSeeDoctor:   whenToSeeDoctor,
-		FollowUpTests:     followUpTests,
+	// 2. Добавляем тесты по симптомам
+	for _, symptom := range symptoms {
+		chakras := e.symptomDB.FindChakrasBySymptom(symptom)
+		for _, c := range chakras {
+			if layer, ok := layers.EndocrineMap[c]; ok {
+				for _, t := range layer.RecommendedTests {
+					tests = append(tests, LabTest{
+						Name:        t,
+						Priority:    8,
+						Category:    "SymptomBased",
+						Chakra:      c,
+						Description: "По симптому: " + symptom,
+					})
+				}
+			}
+		}
 	}
+	
+	// 3. Удаляем дубликаты и сортируем
+	tests = deduplicateTests(tests)
+	sortByPriority(tests)
+	
+	return tests
 }
 
-// NewLabTestEngine создаёт новый движок рекомендаций
-func NewLabTestEngine() *LabTestEngine {
-	return &LabTestEngine{
-		EndocrineLayers: layers.GetEndocrineLayers(),
-		SymptomDatabase: LoadSymptomDatabase(),
-		ReferenceTables: LoadReferenceTables(),
+// mapImbalancesToChakras сопоставляет дисбалансы чакрам (вспомогательная)
+func (e *LabTestEngine) mapImbalancesToChakras(imbalances []string) []chakra.ChakraIndex {
+	var chakras []chakra.ChakraIndex
+	for _, imb := range imbalances {
+		for idx, layer := range layers.EndocrineMap {
+			for _, d := range layer.Dysregulation {
+				if strings.Contains(strings.ToLower(imb), strings.ToLower(d)) {
+					chakras = append(chakras, idx)
+				}
+			}
+		}
 	}
+	return chakras
 }
 
+// mapTestToChakra возвращает чакру для теста
+func (e *LabTestEngine) mapTestToChakra(testName string) chakra.ChakraIndex {
+	for idx, layer := range layers.EndocrineMap {
+		for _, t := range layer.RecommendedTests {
+			if strings.Contains(testName, t) {
+				return idx
+			}
+		}
+	}
+	return -1
+}
+
+// deduplicateTests удаляет дубликаты по имени теста
+func deduplicateTests(tests []LabTest) []LabTest {
+	seen := make(map[string]bool)
+	var result []LabTest
+	for _, t := range tests {
+		if !seen[t.Name] {
+			seen[t.Name] = true
+			result = append(result, t)
+		}
+	}
+	return result
+}
+
+// sortByPriority сортирует тесты по приоритету (по убыванию)
+func sortByPriority(tests []LabTest) {
+	sort.Slice(tests, func(i, j int) bool {
+		return tests[i].Priority > tests[j].Priority
+	})
+}
+
+// getChakraName возвращает название чакры
+func getChakraName(idx chakra.ChakraIndex) string {
+	info := chakra.GetChakraInfo(idx)
+	return info.Name
+}
+
+// determineStatus определяет статус теста (упрощённо)
+func determineStatus(value, refMin, refMax float64) string {
+	if value < refMin {
+		return "LOW"
+	}
+	if value > refMax {
+		return "HIGH"
+	}
+	return "NORMAL"
+}
+
+// calculatePercentile рассчитывает процентиль (заглушка)
+func calculatePercentile(value, mean, stdDev float64) float64 {
+	// В продакшене: использовать статистическую библиотеку
+	z := (value - mean) / stdDev
+	// Упрощённая аппроксимация нормального распределения
+	if z < -3 {
+		return 0.1
+	}
+	if z > 3 {
+		return 99.9
+	}
+	return 50 + z*17 // грубая линейная аппроксимация
+}

@@ -14,7 +14,7 @@ import (
 	"syscall"
 
 	"ideal-core/pkg/crypto"
-	"ideal-core/pkg/yggdrasil-go"
+	"ideal-core/pkg/yggdrasil"
 )
 
 var (

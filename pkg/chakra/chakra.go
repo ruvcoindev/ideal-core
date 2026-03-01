@@ -1,180 +1,182 @@
-// Package chakra — энергетическая модель человека
-//
-// Контекст:
-// Этот пакет реализует чакральную систему как ОДИН ИЗ СЛОЁВ
-// целостной модели человека в проекте ideal-core.
-//
-// Философия:
-// - Человек = многомерная система (энергия + физиология + психология + дух)
-// - Чакры = энергетические центры, коррелирующие с физическими системами
-// - Дисбаланс на одном уровне проявляется на других
-//
-// Архитектура:
-// - chakra.go — базовые структуры (ЭТОТ ФАЙЛ)
-// - chakra_system.go — системные функции (СУЩЕСТВУЮЩИЙ, НЕ УДАЛЯТЬ)
-// - layers/ — слои (эндокринный, нервный, психологический)
-// - correlations/ — связи между системами
-// - diagnostics/ — диагностика по симптомам
-// - recommendations/ — рекомендательная система
-// - practices/ — практики для балансировки
-// - temporal/ — временные соответствия
-// - visual/ — визуализация (SVG, ASCII)
-//
-// Важно для разработчиков:
-// - НЕ удалять chakra_system.go — обратная совместимость
-// - Новые функции добавлять в соответствующие модули
-// - Все изменения документировать в README.md
 package chakra
 
-// ChakraInfo — полная информация о чакре
-//
-// Концепция:
-// Эта структура объединяет данные из всех слоёв:
-// - Базовые (название, цвет, звук)
-// - Физиологические (органы, железы, гормоны)
-// - Психологические (Эриксон, Джудит, травмы)
-// - Энергетические (лепестки, биджи, янтры)
-type ChakraInfo struct {
-	// === БАЗОВЫЕ ДАННЫЕ ===
-	Name       string `json:"name"`        // Название на русском
-	Sanskrit   string `json:"sanskrit"`    // Санскритское имя
-	Location   string `json:"location"`    // Расположение в теле
-	Color      string `json:"color"`       // Цвет
-	HexColor   string `json:"hex_color"`   // HEX код цвета
-	Sound      string `json:"sound"`       // Звук (биджа-мантра)
-	Element    string `json:"element"`     // Элемент (таттва)
+// ChakraIndex — индекс чакры (0-6)
+type ChakraIndex int
 
-	// === ПСИХОЛОГИЧЕСКИЙ СЛОЙ ===
-	Theme          string         `json:"theme"`           // Тема чакры
-	Psychosoma     string         `json:"psychosoma"`      // Психосоматика
-	Imbalance      ImbalanceModel `json:"imbalance"`       // Дисбаланс
-	Affirmations   AffirmationSet `json:"affirmations"`    // Аффирмации
+const (
+	Muladhara ChakraIndex = iota // 0: Корень
+	Svadhisthana                 // 1: Сакральный
+	Manipura                     // 2: Солнечное сплетение
+	Anahata                      // 3: Сердечный
+	Vishuddha                    // 4: Горловой
+	Ajna                         // 5: Третий глаз
+	Sahasrara                    // 6: Коронный
+)
 
-	// === РАЗВИТИЕ ЛИЧНОСТИ ===
-	EriksonStage   EriksonStage   `json:"erikson_stage"`   // Стадия по Эриксону
-	JudithInsights JudithModel    `json:"judith_insights"` // Модель Анодеи Джудит
-
-	// === ФИЗИОЛОГИЧЕСКИЙ СЛОЙ ===
-	Endocrine EndocrineCorrelation `json:"endocrine"` // Эндокринная система
-
-	// === ТРАДИЦИОННАЯ СТРУКТУРА ===
-	Traditional TraditionalStructure `json:"traditional"` // Лепестки, биджи, янтры
-
-	// === ВИЗУАЛИЗАЦИЯ ===
-	Visual VisualRepresentation `json:"visual"` // SVG, ASCII
-
-	// === МЕТА-ДАННЫЕ ===
-	Sources     []string `json:"sources"`      // Источники данных
-	LastUpdated string   `json:"last_updated"` // Дата обновления
-}
-
-// ImbalanceModel — модель дисбаланса чакры
-//
-// Концепция:
-// Дисбаланс рассматривается не как бинарное состояние,
-// а как спектр с контекстом и динамикой.
+// ImbalanceModel — модель дисбаланса
 type ImbalanceModel struct {
-	Level       string   `json:"level"`        // "deficit" | "balanced" | "excess"
-	Intensity   float64  `json:"intensity"`    // 0.0 - 1.0
-	Context     []string `json:"context"`      // Сферы жизни
-	Duration    string   `json:"duration"`     // "acute" | "chronic" | "cyclical"
-	Triggers    []string `json:"triggers"`     // Триггеры
-	Deficit     string   `json:"deficit"`      // Проявления дефицита
-	Excess      string   `json:"excess"`       // Проявления избытка
+	Emotions    []string `json:"emotions"`
+	Behaviors   []string `json:"behaviors"`
+	Physical    []string `json:"physical"`
 }
 
-// AffirmationSet — 7-уровневый набор аффирмаций
-//
-// Уровни:
-// 1. Being (Я есть) — идентичность
-// 2. Feeling (Я чувствую) — эмоции
-// 3. Thinking (Я думаю) — убеждения
-// 4. Doing (Я делаю) — действия
-// 5. Allowing (Я позволяю) — принятие
-// 6. Releasing (Я отпускаю) — освобождение
-// 7. Trusting (Я доверяю) — интеграция
-type AffirmationSet struct {
-	Being     string `json:"being"`
-	Feeling   string `json:"feeling"`
-	Thinking  string `json:"thinking"`
-	Doing     string `json:"doing"`
-	Allowing  string `json:"allowing"`
-	Releasing string `json:"releasing"`
-	Trusting  string `json:"trusting"`
+// ChakraInfo — полная информация о чакре
+type ChakraInfo struct {
+	Index       ChakraIndex    `json:"index"`
+	Name        string         `json:"name"`
+	Element     string         `json:"element"`
+	Color       string         `json:"color"`
+	Location    string         `json:"location"`
+	Imbalance   ImbalanceModel `json:"imbalance"`
+	Affirmation string         `json:"affirmation"`
+	Practice    string         `json:"practice"`
 }
 
-// EriksonStage — стадия психосоциального развития по Эриксону
-type EriksonStage struct {
-	Stage        int    `json:"stage"`         // 1-8
-	AgeRange     string `json:"age_range"`     // Возрастной диапазон
-	Crisis       string `json:"crisis"`        // Психосоциальный кризис
-	Virtue       string `json:"virtue"`        // Формируемая добродетель
-	ChakraIndex  int    `json:"chakra_index"`  // Индекс чакры (0-6)
-	SignsOfBlock string `json:"signs_of_block"`
-	HealingFocus string `json:"healing_focus"`
+// GetChakraInfo возвращает информацию о чакре по индексу
+func GetChakraInfo(idx ChakraIndex) ChakraInfo {
+	chakras := map[ChakraIndex]ChakraInfo{
+		Muladhara: {
+			Index:     Muladhara,
+			Name:      "Муладхара",
+			Element:   "Земля",
+			Color:     "Красный",
+			Location:  "Основание позвоночника",
+			Imbalance: ImbalanceModel{
+				Emotions:  []string{"Страх", "Тревога", "Небезопасность"},
+				Behaviors: []string{"Контроль", "Жадность", "Изоляция"},
+				Physical:  []string{"Проблемы с ногами, кишечником, иммунитетом"},
+			},
+			Affirmation: "Я в безопасности. Земля поддерживает меня.",
+			Practice:    "Гвоздестояние, заземление, работа с корнями",
+		},
+		Svadhisthana: {
+			Index:     Svadhisthana,
+			Name:      "Свадхистана",
+			Element:   "Вода",
+			Color:     "Оранжевый",
+			Location:  "Низ живота",
+			Imbalance: ImbalanceModel{
+				Emotions:  []string{"Вина", "Стыд", "Подавленные желания"},
+				Behaviors: []string{"Зависимости", "Эмоциональные качели"},
+				Physical:  []string{"Проблемы с мочеполовой системой, поясницей"},
+			},
+			Affirmation: "Я позволяю себе чувствовать. Мои желания важны.",
+			Practice:    "Танец, вода, творчество, принятие эмоций",
+		},
+		Manipura: {
+			Index:     Manipura,
+			Name:      "Манипура",
+			Element:   "Огонь",
+			Color:     "Жёлтый",
+			Location:  "Солнечное сплетение",
+			Imbalance: ImbalanceModel{
+				Emotions:  []string{"Гнев", "Стыд", "Низкая самооценка"},
+				Behaviors: []string{"Контроль других", "Перфекционизм"},
+				Physical:  []string{"Проблемы с ЖКТ, диабет, усталость"},
+			},
+			Affirmation: "Я достоин. Моя сила — в моём выборе.",
+			Practice:    "Дыхание огня, солнечные ванны, утверждение границ",
+		},
+		Anahata: {
+			Index:     Anahata,
+			Name:      "Анахата",
+			Element:   "Воздух",
+			Color:     "Зелёный",
+			Location:  "Центр груди",
+			Imbalance: ImbalanceModel{
+				Emotions:  []string{"Обида", "Ревность", "Одиночество"},
+				Behaviors: []string{"Закрытость", "Жертвенность"},
+				Physical:  []string{"Проблемы с сердцем, лёгкими, грудным отделом"},
+			},
+			Affirmation: "Я люблю и принимаю себя. Моё сердце открыто.",
+			Practice:    "Практика благодарности, объятия, работа с прощением",
+		},
+		Vishuddha: {
+			Index:     Vishuddha,
+			Name:      "Вишудха",
+			Element:   "Эфир",
+			Color:     "Голубой",
+			Location:  "Горло",
+			Imbalance: ImbalanceModel{
+				Emotions:  []string{"Страх говорить", "Ложь", "Подавленный голос"},
+				Behaviors: []string{"Молчание", "Сплетни", "Неумение сказать «нет»"},
+				Physical:  []string{"Проблемы с горлом, щитовидкой, шеей"},
+			},
+			Affirmation: "Мой голос важен. Я говорю свою правду с любовью.",
+			Practice:    "Пение, мантры, ведение дневника, честный диалог",
+		},
+		Ajna: {
+			Index:     Ajna,
+			Name:      "Аджна",
+			Element:   "Свет",
+			Color:     "Индиго",
+			Location:  "Между бровями",
+			Imbalance: ImbalanceModel{
+				Emotions:  []string{"Спутанность", "Иллюзии", "Отрицание интуиции"},
+				Behaviors: []string{"Гиперрациональность", "Игнорирование знаков"},
+				Physical:  []string{"Головные боли, проблемы со зрением, бессонница"},
+			},
+			Affirmation: "Я доверяю своей интуиции. Вижу ясно.",
+			Practice:    "Медитация на третий глаз, работа со снами, визуализация",
+		},
+		Sahasrara: {
+			Index:     Sahasrara,
+			Name:      "Сахасрара",
+			Element:   "Сознание",
+			Color:     "Фиолетовый/Белый",
+			Location:  "Макушка",
+			Imbalance: ImbalanceModel{
+				Emotions:  []string{"Отчуждение", "Цинизм", "Потеря смысла"},
+				Behaviors: []string{"Духовный материализм", "Отказ от практики"},
+				Physical:  []string{"Неврологические проблемы, депрессия"},
+			},
+			Affirmation: "Я един со Вселенной. Мой путь имеет смысл.",
+			Practice:    "Молчание, созерцание, служение, интеграция опыта",
+		},
+	}
+	return chakras[idx]
 }
 
-// JudithModel — психологическая модель по Анодее Джудит
-type JudithModel struct {
-	ChildhoodPattern  string   `json:"childhood_pattern"`
-	CoreWound         string   `json:"core_wound"`
-	DefenseMechanism  string   `json:"defense_mechanism"`
-	AttachmentStyle   string   `json:"attachment_style"`
-	HealingPath       []string `json:"healing_path"`
+// DetectActiveChakras определяет активные чакры по симптомам
+func DetectActiveChakras(symptoms []string) []ChakraIndex {
+	active := make(map[ChakraIndex]bool)
+	
+	for _, s := range symptoms {
+		switch {
+		case containsAny(s, []string{"страх", "тревога", "ноги", "кишечник"}):
+			active[Muladhara] = true
+		case containsAny(s, []string{"вина", "желания", "мочеполовая", "поясница"}):
+			active[Svadhisthana] = true
+		case containsAny(s, []string{"гнев", "самооценка", "жкт", "контроль"}):
+			active[Manipura] = true
+		case containsAny(s, []string{"обида", "сердце", "лёгкие", "одиночество"}):
+			active[Anahata] = true
+		case containsAny(s, []string{"горло", "голос", "щитовидка", "ложь"}):
+			active[Vishuddha] = true
+		case containsAny(s, []string{"интуиция", "головная боль", "зрение", "сны"}):
+			active[Ajna] = true
+		case containsAny(s, []string{"смысл", "отчуждение", "депрессия", "сознание"}):
+			active[Sahasrara] = true
+		}
+	}
+	
+	var result []ChakraIndex
+	for idx := range active {
+		result = append(result, idx)
+	}
+	return result
 }
 
-// EndocrineCorrelation — корреляция с эндокринной системой
-type EndocrineCorrelation struct {
-	Gland          string   `json:"gland"`
-	Hormones       []string `json:"hormones"`
-	Functions      []string `json:"functions"`
-	ImbalanceSigns []string `json:"imbalance_signs"`
-	SupportMethods []string `json:"support_methods"`
+// Helper
+func containsAny(s string, substrs []string) bool {
+	for _, sub := range substrs {
+		if contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }
 
-// PetalInfo — информация о лепестке лотоса чакры
-type PetalInfo struct {
-	SanskritLetter string `json:"sanskrit_letter"`
-	BijaMantra     string `json:"bija_mantra"`
-	Quality        string `json:"quality"`
-	Color          string `json:"color"`
-	ActivationNote string `json:"activation_note"`
-}
-
-// SubChakraInfo — микро-центр внутри чакры
-type SubChakraInfo struct {
-	Name         string      `json:"name"`
-	Location     string      `json:"location"`
-	Function     string      `json:"function"`
-	Petals       []PetalInfo `json:"petals"`
-	RelatedDeity string      `json:"related_deity"`
-}
-
-// TraditionalStructure — традиционная тантрическая структура
-type TraditionalStructure struct {
-	TotalPetals   int              `json:"total_petals"`
-	Petals        []PetalInfo      `json:"petals"`
-	SubChakras    []SubChakraInfo  `json:"sub_chakras"`
-	CentralBija   string           `json:"central_bija"`
-	Yantra        string           `json:"yantra"`
-	CauseDeity    string           `json:"cause_deity"`
-	ElementBija   string           `json:"element_bija"`
-	ActivationSeq []string         `json:"activation_seq"`
-}
-
-// VisualRepresentation — визуальное отображение
-type VisualRepresentation struct {
-	ASCII   string                 `json:"ascii"`
-	SVG     []byte                 `json:"svg"`
-	Config  map[string]interface{} `json:"config"`
-	Meta    VisualMeta             `json:"meta"`
-}
-
-// VisualMeta — метаданные визуализации
-type VisualMeta struct {
-	RecommendedMode    string `json:"recommended_mode"`
-	MinRequirements    string `json:"min_requirements"`
-	SVGWidth           int    `json:"svg_width"`
-	SVGHeight          int    `json:"svg_height"`
-	AnimationSupported bool   `json:"animation_supported"`
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr)
 }
