@@ -20,14 +20,20 @@ type User struct {
 }
 
 type Person struct {
-	ID         string    `json:"person_id"`
-	UserID     string    `json:"user_id"`
-	Name       string    `json:"name"`
-	BirthDate  string    `json:"birth_date"`
-	Coords     string    `json:"coords"`
-	SumFreq    int       `json:"sum_freq"`
-	FlowStatus string    `json:"flow_status"`
-	CreatedAt  time.Time `json:"created_at"`
+	ID           string    `json:"person_id"`
+	UserID       string    `json:"user_id"`
+	Name         string    `json:"name"`
+	BirthDate    string    `json:"birth_date"`
+	LastContact  time.Time `json:"last_contact,omitempty"` // 🔹 Новое поле для расчёта фаз
+	Coords       string    `json:"coords"`
+	SumFreq      int       `json:"sum_freq"`
+	Vectors      string    `json:"vectors"`
+	FlowStatus   string    `json:"flow_status"`
+	PsychAge     int       `json:"psych_age,omitempty"`      // 🔹 Психовозраст (7/35/55)
+	Location     string    `json:"location,omitempty"`       // 🔹 Локация: "ValyaHome", "Neutral"
+	Tags         string    `json:"tags"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }
 
 type PersonSymptom struct {
@@ -41,7 +47,7 @@ type Feedback struct {
 	ID              int       `json:"id"`
 	PersonID        string    `json:"person_id"`
 	IntentionHash   string    `json:"intention_hash"`
-	Action          string    `json:"action"`
+	Action          string    `json:"action"` // "copied", "printed", "ignored"
 	Timestamp       time.Time `json:"timestamp"`
 	Reward          float64   `json:"reward"`
 }
@@ -61,7 +67,6 @@ func NewDatabase(path string) (*Database, error) {
 		return nil, err
 	}
 
-	// Основные таблицы
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS users (
 			id TEXT PRIMARY KEY,
@@ -74,10 +79,16 @@ func NewDatabase(path string) (*Database, error) {
 			user_id TEXT NOT NULL,
 			name TEXT NOT NULL,
 			birth_date TEXT NOT NULL,
+			last_contact DATETIME,
 			coords TEXT,
 			sum_freq INTEGER,
+			vectors TEXT,
 			flow_status TEXT DEFAULT 'Active',
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+			psych_age INTEGER,
+			location TEXT,
+			tags TEXT,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS person_symptoms (
 			person_id TEXT REFERENCES people(id),
@@ -135,16 +146,16 @@ func (d *Database) GetUser(id string) (*User, error) {
 func (d *Database) AddPerson(p Person) error {
 	_, err := d.db.Exec(
 		`INSERT OR REPLACE INTO people 
-		(id, user_id, name, birth_date, coords, sum_freq, flow_status) 
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		p.ID, p.UserID, p.Name, p.BirthDate, p.Coords, p.SumFreq, p.FlowStatus,
+		(id, user_id, name, birth_date, last_contact, coords, sum_freq, vectors, flow_status, psych_age, location, tags, updated_at) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		p.ID, p.UserID, p.Name, p.BirthDate, p.LastContact, p.Coords, p.SumFreq, p.Vectors, p.FlowStatus, p.PsychAge, p.Location, p.Tags, time.Now(),
 	)
 	return err
 }
 
 func (d *Database) GetPeopleByUser(userID string) ([]Person, error) {
 	rows, err := d.db.Query(
-		"SELECT id, user_id, name, birth_date, coords, sum_freq, flow_status, created_at FROM people WHERE user_id = ?",
+		"SELECT id, user_id, name, birth_date, last_contact, coords, sum_freq, vectors, flow_status, psych_age, location, tags, created_at, updated_at FROM people WHERE user_id = ?",
 		userID,
 	)
 	if err != nil {
@@ -155,13 +166,25 @@ func (d *Database) GetPeopleByUser(userID string) ([]Person, error) {
 	var people []Person
 	for rows.Next() {
 		var p Person
-		err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.BirthDate, &p.Coords, &p.SumFreq, &p.FlowStatus, &p.CreatedAt)
+		var lastContact sql.NullTime
+		err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.BirthDate, &lastContact, &p.Coords, &p.SumFreq, &p.Vectors, &p.FlowStatus, &p.PsychAge, &p.Location, &p.Tags, &p.CreatedAt, &p.UpdatedAt)
 		if err != nil {
 			return nil, err
+		}
+		if lastContact.Valid {
+			p.LastContact = lastContact.Time
 		}
 		people = append(people, p)
 	}
 	return people, nil
+}
+
+func (d *Database) UpdateLastContact(personID string, lastContact time.Time) error {
+	_, err := d.db.Exec(
+		"UPDATE people SET last_contact = ?, updated_at = ? WHERE id = ?",
+		lastContact, time.Now(), personID,
+	)
+	return err
 }
 
 func (d *Database) AddSymptom(ps PersonSymptom) error {
