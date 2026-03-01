@@ -1,54 +1,44 @@
+// Package identity — идентификация пользователей
 package identity
 
 import (
-	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/hex"
-	"time"
 )
 
-// PublicKey представляет публичный ключ пользователя (Ed25519, 32 байта)
-type PublicKey [32]byte
+// ID — уникальный идентификатор пользователя
+//
+// Почему string, а не int:
+// - UUID более безопасен (непредсказуем)
+// - Не раскрывает порядок создания
+// - Легко генерировать распределённо
+type ID string
 
-// PrivateKey представляет приватный ключ (Ed25519, 64 байта)
-type PrivateKey [64]byte
-
-// GenerateKeyPair генерирует пару ключей для нового пользователя
-func GenerateKeyPair() (PublicKey, PrivateKey, error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+// NewID генерирует новый уникальный идентификатор
+//
+// Формат: 32-символьный hex (128 бит энтропии)
+// Пример: "a3f5c8d2e1b4f7a9c6d8e2f1a5b3c7d9"
+func NewID() ID {
+	bytes := make([]byte, 16) // 128 бит
+	_, err := rand.Read(bytes)
 	if err != nil {
-		return PublicKey{}, PrivateKey{}, err
+		// Fallback для тестов
+		return ID("00000000000000000000000000000000")
 	}
-	var pk PublicKey
-	var sk PrivateKey
-	copy(pk[:], pub)
-	copy(sk[:], priv)
-	return pk, sk, nil
+	return ID(hex.EncodeToString(bytes))
 }
 
-// GenerateID создаёт детерминированный ID из даты рождения + соли
-// Используется для публичной идентификации без раскрытия ключей
-func GenerateID(birthDate time.Time, salt string) string {
-	data := []byte(birthDate.Format("20060102") + salt)
-	hash := sha256.Sum256(data)
-	return hex.EncodeToString(hash[:16]) // 128-bit ID
+// String возвращает строковое представление ID
+func (id ID) String() string {
+	return string(id)
 }
 
-// Sign подписывает сообщение приватным ключом
-func Sign(priv PrivateKey, message []byte) []byte {
-	return ed25519.Sign(priv[:], message)
+// IsValid проверяет валидность ID
+func (id ID) IsValid() bool {
+	return len(id) == 32 && id != "00000000000000000000000000000000"
 }
 
-// Verify проверяет подпись публичным ключом
-func Verify(pub PublicKey, message, signature []byte) bool {
-	return ed25519.Verify(pub[:], message, signature)
-}
-
-// UserID хранит публичные данные пользователя
-type UserID struct {
-	ID        string    // Сгенерированный ID (GenerateID)
-	PublicKey PublicKey // Для крипто-операций
-	BirthDate time.Time // Для расчёта векторов
-	CreatedAt time.Time // Время регистрации в системе
+// Empty возвращает пустой ID
+func Empty() ID {
+	return ID("")
 }

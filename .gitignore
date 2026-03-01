@@ -1,23 +1,55 @@
-# Ключи и секреты
-*.key
-*.pem
-*.env
-.secrets/
-.ideal-core-secrets/
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+go.work
 
-# Базы данных
-data/*.db
-data/*.sqlite
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# Логи
-*.log
-logs/
-
-# ОС
+# OS
 .DS_Store
 Thumbs.db
 
-# Сборка
-/build/
-/dist/
-*.exe
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build
+build/
+dist/
+bin/
+
+# External repositories (не добавляем чужие репозитории)
+pkg/yggdrasil-go/
+pkg/*/vendor/
+
+# Database
+*.db
+*.sqlite
+data/*.db
+
+# Keys (критично!)
+*.key
+*.pem
+private/
+secrets/
+
+# Temporary
+tmp/
+temp/
+*.tmp
