@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>IDEAL CORE | Дневник</title>
+    <style>
+        :root { --bg: #0f0f1a; --card: #1a1a2e; --text: #e0e0e0; --accent: #00d9ff; --gratitude: #ffd700; }
+        body { font-family: monospace; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .card { background: var(--card); padding: 20px; border-radius: 8px; margin: 20px 0; }
+        .mode-toggle { display: flex; gap: 10px; margin-bottom: 20px; }
+        .mode-btn { flex: 1; padding: 15px; border: 2px solid #333; background: #2a2a3e; color: var(--text); cursor: pointer; border-radius: 8px; transition: all 0.2s; }
+        .mode-btn.active { border-color: var(--accent); background: #3a3a5e; }
+        .mode-btn.gratitude.active { border-color: var(--gratitude); }
+        .gratitude-item { display: flex; gap: 10px; margin: 10px 0; align-items: center; }
+        .gratitude-item input { flex: 1; }
+        .specificity-slider { width: 100px; }
+        input, textarea, select { width: 100%; padding: 10px; margin: 5px 0; background: #0f0f1a; border: 1px solid #333; color: var(--text); border-radius: 4px; }
+        button { background: var(--accent); color: #000; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button.gratitude { background: var(--gratitude); color: #000; }
+        .entry { border-left: 3px solid var(--accent); padding-left: 15px; margin: 15px 0; }
+        .entry.gratitude { border-left-color: var(--gratitude); }
+        .tag { display: inline-block; background: #333; padding: 2px 8px; border-radius: 4px; margin: 2px; font-size: 0.9em; }
+        .tag.gratitude { background: var(--gratitude); color: #000; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+        .stat-box { background: #2a2a3e; padding: 15px; border-radius: 8px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📓 Дневник</h1>
+        
+        <!-- Переключение режимов -->
+        <div class="mode-toggle">
+            <button class="mode-btn active" onclick="setMode('cbt')">🧠 КПТ (работа с мыслями)</button>
+            <button class="mode-btn gratitude" onclick="setMode('gratitude')">💛 Благодарность</button>
+        </div>
+        
+        <!-- Форма КПТ -->
+        <div id="cbtForm" class="card">
+            <h2>✍️ Запись КПТ</h2>
+            <textarea id="situation" placeholder="Что произошло? (объективно)"></textarea>
+            <textarea id="automaticThought" placeholder="Автоматическая мысль"></textarea>
+            <input type="text" id="emotions" placeholder="Эмоции (через запятую)">
+            <input type="number" id="intensity" min="0" max="100" value="50" placeholder="Интенсивность 0-100">
+            <button onclick="saveCBTEntry()">💾 Сохранить</button>
+            <button type="button" onclick="showRational()">🧠 Показать рациональный ответ</button>
+            <div id="rationalResponse" style="margin-top:10px;padding:10px;background:#2a2a3e;border-radius:4px;display:none;"></div>
+        </div>
+        
+        <!-- Форма благодарности -->
+        <div id="gratitudeForm" class="card" style="display:none;">
+            <h2>💛 Дневник благодарности</h2>
+            <p><small>Запишите 3-5 пунктов, начиная с «Я благодарен за...». Будьте конкретны.</small></p>
+            <div id="gratitudeItems"></div>
+            <button type="button" onclick="addGratitudeItem()">➕ Добавить пункт</button>
+            <textarea id="gratitudeNotes" placeholder="Дополнительные заметки (необязательно)"></textarea>
+            <button class="gratitude" onclick="saveGratitudeEntry()">💛 Сохранить благодарность</button>
+        </div>
+        
+        <!-- Поиск -->
+        <div class="card">
+            <h2>🔍 Поиск по смыслу</h2>
+            <input type="text" id="searchQuery" placeholder="Например: 'финансы', 'благодарность', 'границы'...">
+            <button onclick="searchEntries()">🔍 Найти</button>
+            <label><input type="checkbox" id="searchGratitude" checked> Включая благодарность</label>
+        </div>
+        
+        <!-- Статистика -->
+        <div class="card">
+            <h2>📊 Статистика</h2>
+            <div class="stats-grid" id="statsContainer">
+                <div class="stat-box"><h3 id="totalEntries">0</h3><p>Всего записей</p></div>
+                <div class="stat-box"><h3 id="cbtCount">0</h3><p>КПТ</p></div>
+                <div class="stat-box"><h3 id="gratitudeCount">0</h3><p>Благодарность</p></div>
+                <div class="stat-box"><h3 id="gratitudeRatio">0%</h3><p>Доля благодарности</p></div>
+            </div>
+        </div>
+        
+        <!-- Список записей -->
+        <div class="card">
+            <h2>📋 Записи</h2>
+            <div id="entriesList"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'cbt';
+        
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            document.getElementById('cbtForm').style.display = mode === 'cbt' ? 'block' : 'none';
+            document.getElementById('gratitudeForm').style.display = mode === 'gratitude' ? 'block' : 'none';
+            if (mode === 'gratitude' && document.getElementById('gratitudeItems').children.length === 0) {
+                addGratitudeItem(); addGratitudeItem(); addGratitudeItem(); // 3 пункта по умолчанию
+            }
+        }
+        
+        function addGratitudeItem() {
+            const container = document.getElementById('gratitudeItems');
+            const div = document.createElement('div');
+            div.className = 'gratitude-item';
+            div.innerHTML = `
+                <input type="text" class="gratitude-text" placeholder="Я благодарен за...">
+                <select class="gratitude-category">
+                    <option value="small_things">Мелочи</option>
+                    <option value="people">Люди</option>
+                    <option value="nature">Природа</option>
+                    <option value="self">Себе</option>
+                    <option value="growth">Рост</option>
+                </select>
+                <input type="range" class="specificity-slider" min="1" max="10" value="7" title="Конкретика 1-10">
+                <span class="specificity-value">7</span>
+            `;
+            container.appendChild(div);
+            div.querySelector('.specificity-slider').oninput = (e) => {
+                e.target.nextElementSibling.textContent = e.target.value;
+            };
+        }
+        
+        async function saveCBTEntry() {
+            const entry = {
+                type: 'cbt',
+                situation: document.getElementById('situation').value,
+                automatic_thought: document.getElementById('automaticThought').value,
+                emotions: document.getElementById('emotions').value.split(',').map(s => s.trim()),
+                intensity: parseInt(document.getElementById('intensity').value),
+                timestamp: new Date().toISOString()
+            };
+            await fetch('/api/journal/entries', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(entry)
+            });
+            loadStats(); loadEntries();
+            document.getElementById('situation').value = '';
+            document.getElementById('automaticThought').value = '';
+        }
+        
+        async function saveGratitudeEntry() {
+            const items = [];
+            document.querySelectorAll('.gratitude-item').forEach(div => {
+                items.push({
+                    text: div.querySelector('.gratitude-text').value,
+                    category: div.querySelector('.gratitude-category').value,
+                    specificity: parseInt(div.querySelector('.specificity-slider').value),
+                    emotion: 'gratitude'
+                });
+            });
+            const entry = {
+                type: 'gratitude',
+                gratitude_items: items.filter(i => i.text.trim()),
+                notes: document.getElementById('gratitudeNotes').value,
+                timestamp: new Date().toISOString()
+            };
+            await fetch('/api/journal/entries', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(entry)
+            });
+            loadStats(); loadEntries();
+        }
+        
+        async function loadStats() {
+            const res = await fetch('/api/journal/stats');
+            const stats = await res.json();
+            document.getElementById('totalEntries').textContent = stats.total_entries;
+            document.getElementById('cbtCount').textContent = stats.cbt_entries || 0;
+            document.getElementById('gratitudeCount').textContent = stats.gratitude_entries || 0;
+            document.getElementById('gratitudeRatio').textContent = Math.round((stats.gratitude_ratio || 0) * 100) + '%';
+        }
+        
+        async function loadEntries() {
+            const res = await fetch('/api/journal/entries');
+            const entries = await res.json();
+            document.getElementById('entriesList').innerHTML = entries.map(e => `
+                <div class="entry ${e.type === 'gratitude' ? 'gratitude' : ''}">
+                    <small>${new Date(e.timestamp).toLocaleString('ru-RU')}</small>
+                    <strong>${e.type === 'gratitude' ? '💛 Благодарность' : '🧠 КПТ'}</strong>
+                    ${e.phase ? `| Фаза: ${e.phase}` : ''}
+                    ${e.person_id ? `| ${e.person_id}` : ''}
+                    <p>${e.type === 'gratitude' ? e.gratitude_items.map(i => `• ${i.text}`).join('<br>') : `<strong>Ситуация:</strong> ${e.situation}<br><strong>Мысль:</strong> ${e.automatic_thought}`}</p>
+                    ${e.distortions?.length ? `<p><strong>Искажения:</strong> ${e.distortions.join(', ')}</p>` : ''}
+                    ${e.rational_response ? `<p><strong>Ответ:</strong> ${e.rational_response}</p>` : ''}
+                    ${e.gratitude_level ? `<p><strong>Уровень:</strong> ${e.gratitude_level}/10</p>` : ''}
+                    <p><strong>Теги:</strong> ${e.tags.map(t => `<span class="tag ${t.includes('gratitude')?'gratitude':''}">${t}</span>`).join('')}</p>
+                </div>
+            `).join('');
+        }
+        
+        async function searchEntries() {
+            const query = document.getElementById('searchQuery').value;
+            const res = await fetch(`/api/journal/search?q=${encodeURIComponent(query)}`);
+            const entries = await res.json();
+            // Отображение результатов (аналогично loadEntries)
+            alert(`Найдено: ${entries.length} записей`);
+        }
+        
+        function showRational() {
+            const thought = document.getElementById('automaticThought').value;
+            let response = "Альтернативный взгляд: ";
+            if (thought.toLowerCase().includes('всегда') || thought.toLowerCase().includes('никогда')) {
+                response += "Есть ли исключения? ";
+            }
+            if (thought.toLowerCase().includes('должен')) {
+                response += "Что если заменить «должен» на «выбираю»? ";
+            }
+            document.getElementById('rationalResponse').textContent = response;
+            document.getElementById('rationalResponse').style.display = 'block';
+        }
+        
+        // Инициализация
+        loadStats(); loadEntries();
+    </script>
+</body>
+</html>

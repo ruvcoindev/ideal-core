@@ -3,30 +3,36 @@ package main
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"ideal-core/pkg/crypto"
+	"ideal-core/pkg/journal"
+	"ideal-core/pkg/yggdrasil"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
-
-	"ideal-core/pkg/crypto"
-	"ideal-core/pkg/yggdrasil"
+	"time"
 )
 
 var (
 	dataDir    = flag.String("data", "~/.ideal-core", "Directory for keys and data")
 	bootstrap  = flag.String("bootstrap", "", "Comma-separated Yggdrasil peers to bootstrap with")
 	genKey     = flag.Bool("genkey", false, "Generate new keypair and exit")
-	exportBackup = flag.String("export-backup", "", "Export encrypted backup to file (requires -password)")
-	importBackup = flag.String("import-backup", "", "Import encrypted backup from file (requires -password)")
-	password   = flag.String("password", "", "Password for backup encryption/decryption")
-	yggPath    = flag.String("yggdrasil", "/usr/bin/yggdrasil", "Path to yggdrasil binary")
 	port       = flag.String("port", "8080", "Port for local web server")
-	bindAddr   = flag.String("bind", "127.0.0.1", "Address to bind web server (127.0.0.1 for local, 0.0.0.0 for LAN)")
+	bindAddr   = flag.String("bind", "127.0.0.1", "Address to bind web server")
+	ollamaHost = flag.String("ollama", "http://localhost:11434", "Ollama API host")
+	ollamaModel= flag.String("ollama-model", "bge-m3", "Ollama model for embeddings")
+	useOllama  = flag.Bool("use-ollama", false, "Enable Ollama embeddings (requires running Ollama server)")
+)
+
+// Global instances
+var (
+	journalInstance *journal.Journal
+	keyPair         *crypto.KeyPair
 )
 
 func main() {
@@ -37,54 +43,41 @@ func main() {
 		log.Fatalf("Failed to create data dir: %v", err)
 	}
 
-	// Handle backup export/import
-	if *exportBackup != "" {
-		handleExportBackup(dir, *exportBackup, *password)
-		return
-	}
-	if *importBackup != "" {
-		handleImportBackup(*importBackup, *password)
-		return
-	}
-
 	// Key management
 	keyPath := filepath.Join(dir, "private.key")
 	pubKeyPath := filepath.Join(dir, "public.key")
-	var kp *crypto.KeyPair
+	var err error
 
 	if *genKey {
-		var err error
-		kp, err = crypto.GenerateKeyPair()
+		keyPair, err = crypto.GenerateKeyPair()
 		if err != nil {
 			log.Fatalf("Key generation failed: %v", err)
 		}
-		if err := crypto.SavePrivateKey(kp.PrivateKey, keyPath); err != nil {
+		if err := crypto.SavePrivateKey(keyPair.PrivateKey, keyPath); err != nil {
 			log.Fatalf("Failed to save private key: %v", err)
 		}
-		if err := os.WriteFile(pubKeyPath, kp.PublicKey, 0644); err != nil {
+		if err := os.WriteFile(pubKeyPath, keyPair.PublicKey, 0644); err != nil {
 			log.Fatalf("Failed to save public key: %v", err)
 		}
 		fmt.Printf("✅ New keypair generated:\n")
-		fmt.Printf("   Public ID: %s\n", kp.ToHex())
-		fmt.Printf("   App Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(kp.PublicKey))
+		fmt.Printf("   Public ID: %s\n", keyPair.ToHex())
+		fmt.Printf("   Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(keyPair.PublicKey))
 		fmt.Printf("   ⚠️  %s", crypto.SecurityWarning())
 		fmt.Printf("   Private key saved to: %s\n", keyPath)
-		fmt.Printf("   Public key saved to: %s\n", pubKeyPath)
 		return
 	}
 
 	// Load or create key
 	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
 		fmt.Println("🔑 No key found, generating new one...")
-		var err error
-		kp, err = crypto.GenerateKeyPair()
+		keyPair, err = crypto.GenerateKeyPair()
 		if err != nil {
 			log.Fatalf("Key generation failed: %v", err)
 		}
-		if err := crypto.SavePrivateKey(kp.PrivateKey, keyPath); err != nil {
+		if err := crypto.SavePrivateKey(keyPair.PrivateKey, keyPath); err != nil {
 			log.Fatalf("Failed to save private key: %v", err)
 		}
-		if err := os.WriteFile(pubKeyPath, kp.PublicKey, 0644); err != nil {
+		if err := os.WriteFile(pubKeyPath, keyPair.PublicKey, 0644); err != nil {
 			log.Fatalf("Failed to save public key: %v", err)
 		}
 	} else {
@@ -96,38 +89,42 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to load public key: %v", err)
 		}
-		kp = &crypto.KeyPair{PrivateKey: priv, PublicKey: ed25519.PublicKey(pub)}
+		keyPair = &crypto.KeyPair{PrivateKey: priv, PublicKey: ed25519.PublicKey(pub)}
 	}
 
-	fmt.Printf("🗝️  Node ID: %s\n", kp.ToHex()[:16]+"...")
-	appYggIP := crypto.DeriveYggdrasilIP(kp.PublicKey)
-	fmt.Printf("🌐 App Yggdrasil IP: %s\n", appYggIP)
-	fmt.Printf("🌐 Web UI: http://%s:%s\n", *bindAddr, *port)
+	fmt.Printf("🗝️  Node ID: %s\n", keyPair.ToHex()[:16]+"...")
+	fmt.Printf("🌐 App Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(keyPair.PublicKey))
 
-	// Check Yggdrasil availability
-	yggAvailable := checkYggdrasil(*yggPath)
-	if !yggAvailable {
-		log.Printf("⚠️  Yggdrasil not found at %s, using fallback transport", *yggPath)
-	} else {
-		fmt.Printf("✅ Yggdrasil service detected\n")
+	// Initialize journal with Ollama option
+	journalCfg := journal.JournalConfig{
+		DataDir:        dir,
+		OllamaHost:     *ollamaHost,
+		OllamaModel:    *ollamaModel,
+		UseOllamaEmbed: *useOllama,
+		DefaultMode:    journal.EntryTypeCBT,
 	}
-
-	// Connect to Yggdrasil mesh
-	ygg, err := yggdrasil.NewClient(kp.ToHex(), *yggPath, yggAvailable)
+	journalInstance, err = journal.NewJournal(journalCfg)
 	if err != nil {
-		log.Fatalf("Yggdrasil init failed: %v", err)
+		log.Fatalf("Failed to initialize journal: %v", err)
 	}
-	defer ygg.Close()
+	fmt.Printf("📓 Journal initialized: %d entries loaded\n", len(journalInstance.GetEntries(journal.EntryFilters{})))
 
-	if *bootstrap != "" {
-		peers := strings.Split(*bootstrap, ",")
-		if err := ygg.Bootstrap(peers); err != nil {
-			log.Printf("⚠️  Bootstrap warning: %v", err)
-		}
+	// Yggdrasil client (optional)
+	yggAvailable := checkYggdrasil("/usr/bin/yggdrasil")
+	if !yggAvailable {
+		log.Printf("⚠️  Yggdrasil not found, running in local-only mode")
+	} else {
+		fmt.Println("✅ Yggdrasil service detected")
+	}
+	ygg, err := yggdrasil.NewClient(keyPair.ToHex(), "/usr/bin/yggdrasil", yggAvailable)
+	if err != nil {
+		log.Printf("⚠️  Yggdrasil client init failed: %v", err)
+	} else {
+		defer ygg.Close()
 	}
 
-	// Start local web server (BIND TO LOCALHOST, NOT YGG IP)
-	go startWebServer(*bindAddr, *port, kp, appYggIP)
+	// Start web server
+	go startWebServer(*bindAddr, *port)
 
 	// Context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -142,87 +139,162 @@ func main() {
 		cancel()
 	}()
 
-	// Start message listener
-	go func() {
-		if err := ygg.Receive(ctx, func(msg []byte) error {
-			fmt.Printf("📥 Received %d bytes (encrypted)\n", len(msg))
-			return nil
-		}); err != nil && err != context.Canceled {
-			log.Printf("Receive error: %v", err)
-		}
-	}()
+	// Yggdrasil message listener (optional)
+	if ygg != nil {
+		go func() {
+			if err := ygg.Receive(ctx, func(msg []byte) error {
+				fmt.Printf("📥 Received %d bytes (encrypted)\n", len(msg))
+				// TODO: decrypt and process message
+				return nil
+			}); err != nil && err != context.Canceled {
+				log.Printf("Receive error: %v", err)
+			}
+		}()
+	}
 
-	fmt.Println("✅ Node + Server running. Press Ctrl+C to stop.")
+	fmt.Printf("✅ Node + Server running at http://%s:%s\n", *bindAddr, *port)
 	fmt.Println("🔐 Security: Your private key is stored encrypted at rest.")
+	fmt.Println("📓 Journal: CBT + Gratitude modes with semantic search")
+	if *useOllama {
+		fmt.Printf("🤖 Ollama: %s/%s\n", *ollamaHost, *ollamaModel)
+	}
 
 	// Keep alive
 	<-ctx.Done()
 	fmt.Println("👋 Node stopped.")
 }
 
-// startWebServer запускает локальный веб-сервер
-func startWebServer(bindAddr, port string, kp *crypto.KeyPair, appYggIP string) {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "🗝️ IDEAL CORE\nNode ID: %s\nApp Yggdrasil IP: %s\n", kp.ToHex()[:16], appYggIP)
-	})
-	http.HandleFunc("/api/keys", func(w http.ResponseWriter, r *http.Request) {
+// startWebServer запускает HTTP-сервер с API для дневника
+func startWebServer(bindAddr, port string) {
+	// Static files
+	fs := http.FileServer(http.Dir("web"))
+	http.Handle("/", fs)
+	http.Handle("/web/", http.StripPrefix("/web/", fs))
+
+	// Journal API endpoints
+	http.HandleFunc("/api/journal/stats", handleJournalStats)
+	http.HandleFunc("/api/journal/entries", handleJournalEntries)
+	http.HandleFunc("/api/journal/search", handleJournalSearch)
+	http.HandleFunc("/api/journal/export/md", handleJournalExportMD)
+
+	// Health check
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"public_key":"%s","app_yggdrasil_ip":"%s"}`, kp.ToHex(), appYggIP)
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
-	
+
 	addr := fmt.Sprintf("%s:%s", bindAddr, port)
 	log.Printf("🌐 Web server listening on http://%s", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
-		log.Printf("Web server error: %v", err)
+		log.Fatalf("Web server error: %v", err)
 	}
 }
 
-func handleExportBackup(dir, backupPath, password string) {
-	if password == "" {
-		log.Fatal("Password required for backup encryption. Use -password flag.")
+// handleJournalStats — GET /api/journal/stats
+func handleJournalStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
-	keyPath := filepath.Join(dir, "private.key")
-	if _, err := os.Stat(keyPath); os.IsNotExist(err) {
-		log.Fatalf("No private key found at %s. Generate one first with -genkey", keyPath)
-	}
-	priv, err := crypto.LoadPrivateKey(keyPath)
-	if err != nil {
-		log.Fatalf("Failed to load private key: %v", err)
-	}
-	pub := priv.Public().(ed25519.PublicKey)
-	kp := &crypto.KeyPair{PrivateKey: priv, PublicKey: pub}
-	backup, err := kp.ExportEncryptedBackup(password)
-	if err != nil {
-		log.Fatalf("Failed to create encrypted backup: %v", err)
-	}
-	if err := crypto.SaveEncryptedBackup(backup, backupPath); err != nil {
-		log.Fatalf("Failed to save backup: %v", err)
-	}
-	fmt.Printf("✅ Encrypted backup saved to: %s\n", backupPath)
-	fmt.Printf("🔐 Keep this file safe. To restore: -import-backup %s -password YOUR_PASSWORD\n", backupPath)
+	stats := journalInstance.GetCombinedStats()
+	json.NewEncoder(w).Encode(stats)
 }
 
-func handleImportBackup(backupPath, password string) {
-	if password == "" {
-		log.Fatal("Password required for backup decryption. Use -password flag.")
+// handleJournalEntries — GET/POST /api/journal/entries
+func handleJournalEntries(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	
+	switch r.Method {
+	case http.MethodGet:
+		// Parse filters from query params
+		filters := journal.EntryFilters{
+			Type:     r.URL.Query().Get("type"),
+			PersonID: r.URL.Query().Get("person"),
+			Phase:    r.URL.Query().Get("phase"),
+			Tag:      r.URL.Query().Get("tag"),
+		}
+		entries := journalInstance.GetEntries(filters)
+		json.NewEncoder(w).Encode(entries)
+		
+	case http.MethodPost:
+		var entry journal.ThoughtEntry
+		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		entry.Timestamp = time.Now()
+		
+		// Route to appropriate add method based on type
+		var err error
+		switch entry.Type {
+		case journal.EntryTypeCBT:
+			err = journalInstance.AddCBTEntry(
+				entry.Situation,
+				entry.AutomaticThought,
+				entry.Emotions,
+				entry.Intensity,
+			)
+		case journal.EntryTypeGratitude:
+			err = journalInstance.AddGratitudeEntry(entry.GratitudeItems, entry.Notes)
+		default:
+			// Fallback to universal method
+			err = journalInstance.AddEntry(entry)
+		}
+		
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(entry)
+		
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
-	backup, err := crypto.LoadEncryptedBackup(backupPath)
-	if err != nil {
-		log.Fatalf("Failed to load backup: %v", err)
-	}
-	kp, err := crypto.ImportEncryptedBackup(backup, password)
-	if err != nil {
-		log.Fatalf("Failed to decrypt backup: %v", err)
-	}
-	fmt.Printf("✅ Backup imported successfully!\n")
-	fmt.Printf("   Public ID: %s\n", kp.ToHex())
-	fmt.Printf("   App Yggdrasil IP: %s\n", crypto.DeriveYggdrasilIP(kp.PublicKey))
 }
 
+// handleJournalSearch — GET /api/journal/search?q=...
+func handleJournalSearch(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	query := r.URL.Query().Get("q")
+	limit := 10
+	if l := r.URL.Query().Get("limit"); l != "" {
+		fmt.Sscanf(l, "%d", &limit)
+	}
+	
+	entries := journalInstance.SearchByMeaning(query, limit)
+	json.NewEncoder(w).Encode(entries)
+}
+
+// handleJournalExportMD — GET /api/journal/export/md
+func handleJournalExportMD(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	
+	// Generate markdown to temp file
+	tmpPath := filepath.Join(os.TempDir(), "journal_export.md")
+	if err := journalInstance.ExportToMarkdown(tmpPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	w.Header().Set("Content-Type", "text/markdown")
+	w.Header().Set("Content-Disposition", "attachment; filename=journal.md")
+	http.ServeFile(w, r, tmpPath)
+	
+	// Cleanup
+	defer os.Remove(tmpPath)
+}
+
+// checkYggdrasil проверяет доступность сервиса Yggdrasil
 func checkYggdrasil(path string) bool {
-	if path == "" {
-		return false
-	}
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return false
 	}

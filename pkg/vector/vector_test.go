@@ -61,12 +61,12 @@ func TestMockVectorStore(t *testing.T) {
 	}
 }
 
-func TestGenerateEmbedding(t *testing.T) {
-	emb, err := GenerateEmbedding("test text")
+func TestGenerateEmbeddingStub(t *testing.T) {
+	emb, err := GenerateEmbeddingStub("test text")
 	if err != nil {
-		t.Errorf("GenerateEmbedding failed: %v", err)
+		t.Errorf("GenerateEmbeddingStub failed: %v", err)
 	}
 	if len(emb) != 384 {
-		t.Errorf("GenerateEmbedding: got length %d, want 384", len(emb))
+		t.Errorf("GenerateEmbeddingStub: got length %d, want 384", len(emb))
 	}
 }

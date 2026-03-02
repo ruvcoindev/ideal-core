@@ -3,6 +3,7 @@ package hypercube
 import (
 	"math"
 	"testing"
+	"time"
 )
 
 func TestDistance4D(t *testing.T) {

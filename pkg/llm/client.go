@@ -6,158 +6,143 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"runtime"
 	"time"
 )
 
-// OllamaConfig — конфигурация клиента
-type OllamaConfig struct {
-	Host        string        // "http://localhost:11434"
-	Model       string        // "bge-m3" для эмбеддингов, "qwen3" для генерации
-	Timeout     time.Duration // таймаут запросов
+// HardwareProfile описывает доступные ресурсы
+type HardwareProfile struct {
+	CPUCores    int
+	RAMGB       float64
+	HasCUDA     bool
+	GPUMemGB    float64
 }
 
-// DefaultConfig возвращает конфигурацию по умолчанию
-func DefaultConfig() OllamaConfig {
+// DetectHardware определяет профиль железа
+func DetectHardware() HardwareProfile {
+	profile := HardwareProfile{
+		CPUCores: runtime.NumCPU(),
+		RAMGB:    detectRAMGB(),
+		HasCUDA:  detectCUDA(),
+	}
+	if profile.HasCUDA {
+		profile.GPUMemGB = detectGPUMemGB()
+	}
+	return profile
+}
+
+func detectRAMGB() float64 {
+	// Упрощённо: читаем /proc/meminfo
+	// В продакшене: использовать gopsutil
+	return 16.0 // заглушка, заменить на реальный парсинг
+}
+
+func detectCUDA() bool {
+	// Проверка наличия nvidia-smi
+	_, err := os.Stat("/usr/bin/nvidia-smi")
+	return err == nil
+}
+
+func detectGPUMemGB() float64 {
+	// Заглушка
+	return 0
+}
+
+// RecommendedModel возвращает оптимальную модель под железо
+func RecommendedModel(hw HardwareProfile) string {
+	if hw.HasCUDA && hw.GPUMemGB >= 8 {
+		return "qwen2.5:7b" // GPU-режим
+	}
+	if hw.RAMGB >= 16 && hw.CPUCores >= 8 {
+		return "qwen2.5:3b" // CPU, среднее железо
+	}
+	return "qwen2.5:1.5b" // CPU, консервативный режим
+}
+
+// OllamaConfig — конфигурация клиента
+type OllamaConfig struct {
+	Host        string
+	Model       string
+	EmbedModel  string // отдельная модель для эмбеддингов
+	Timeout     time.Duration
+	CPUThreads  int // количество потоков для CPU-инференса
+}
+
+// DefaultConfigForHardware создаёт конфиг под текущее железо
+func DefaultConfigForHardware() OllamaConfig {
+	hw := DetectHardware()
 	return OllamaConfig{
-		Host:    "http://localhost:11434",
-		Model:   "bge-m3",
-		Timeout: 30 * time.Second,
+		Host:        "http://localhost:11434",
+		Model:       RecommendedModel(hw),
+		EmbedModel:  "bge-m3",
+		Timeout:     120 * time.Second, // дольше для CPU
+		CPUThreads:  hw.CPUCores - 2,   // оставить 2 ядра системе
 	}
 }
 
-// Client — клиент для взаимодействия с Ollama API
+// Client — клиент для Ollama
 type Client struct {
 	config OllamaConfig
 	http   *http.Client
 }
 
-// NewClient создаёт нового клиента
 func NewClient(cfg OllamaConfig) *Client {
 	return &Client{
 		config: cfg,
-		http: &http.Client{
-			Timeout: cfg.Timeout,
-		},
+		http: &http.Client{Timeout: cfg.Timeout},
 	}
 }
 
-// EmbeddingRequest — запрос на генерацию эмбеддинга
-type EmbeddingRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-}
-
-// EmbeddingResponse — ответ с эмбеддингом
-type EmbeddingResponse struct {
-	Embedding []float32 `json:"embedding"`
-}
-
-// GenerateEmbedding генерирует векторное представление текста через Ollama
+// GenerateEmbedding генерирует эмбеддинг
 func (c *Client) GenerateEmbedding(text string) ([]float32, error) {
-	req := EmbeddingRequest{
-		Model:  c.config.Model,
-		Prompt: text,
+	req := map[string]string{
+		"model":  c.config.EmbedModel,
+		"prompt": text,
 	}
-	
-	body, err := json.Marshal(req)
+	body, _ := json.Marshal(req)
+	resp, err := c.http.Post(c.config.Host+"/api/embeddings", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("marshal request: %w", err)
-	}
-	
-	url := fmt.Sprintf("%s/api/embeddings", c.config.Host)
-	resp, err := c.http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("http request: %w", err)
+		return nil, fmt.Errorf("http error: %w", err)
 	}
 	defer resp.Body.Close()
 	
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(respBody))
 	}
 	
-	var result EmbeddingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	
+	var result struct{ Embedding []float32 }
+	json.NewDecoder(resp.Body).Decode(&result)
 	return result.Embedding, nil
 }
 
-// GenerateRequest — запрос на генерацию текста
-type GenerateRequest struct {
-	Model  string `json:"model"`
-	Prompt string `json:"prompt"`
-	Stream bool   `json:"stream"`
-}
-
-// GenerateResponse — ответ с генерацией
-type GenerateResponse struct {
-	Response string `json:"response"`
-	Done     bool   `json:"done"`
-}
-
-// GenerateText генерирует текст через Ollama (для анализа, рекомендаций)
+// GenerateText генерирует текст с CPU-оптимизациями
 func (c *Client) GenerateText(prompt string) (string, error) {
-	req := GenerateRequest{
-		Model:  "qwen3", // или другая модель для генерации
-		Prompt: prompt,
-		Stream: false,
+	req := map[string]interface{}{
+		"model":  c.config.Model,
+		"prompt": prompt,
+		"stream": false,
+		"options": map[string]interface{}{
+			"num_thread": c.config.CPUThreads, // используем доступные ядра
+			"num_predict": 512, // ограничиваем длину ответа для скорости
+		},
 	}
-	
-	body, err := json.Marshal(req)
+	body, _ := json.Marshal(req)
+	resp, err := c.http.Post(c.config.Host+"/api/generate", "application/json", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
-	}
-	
-	url := fmt.Sprintf("%s/api/generate", c.config.Host)
-	resp, err := c.http.Post(url, "application/json", bytes.NewReader(body))
-	if err != nil {
-		return "", fmt.Errorf("http request: %w", err)
+		return "", fmt.Errorf("http error: %w", err)
 	}
 	defer resp.Body.Close()
 	
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != 200 {
 		respBody, _ := io.ReadAll(resp.Body)
 		return "", fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(respBody))
 	}
 	
-	var result GenerateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
-	}
-	
+	var result struct{ Response string }
+	json.NewDecoder(resp.Body).Decode(&result)
 	return result.Response, nil
-}
-
-// AnalyzeContext анализирует переписку и извлекает инсайты
-func (c *Client) AnalyzeContext(messages []string) (map[string]interface{}, error) {
-	prompt := fmt.Sprintf(`Проанализируй переписку и извлеки:
-1. Темы (список строк)
-2. Эмоции (список строк)
-3. Намерение автора (строка)
-4. Срочность (число 0-1)
-
-Переписка:
-%s
-
-Ответь в формате JSON.`, messages)
-	
-	response, err := c.GenerateText(prompt)
-	if err != nil {
-		return nil, err
-	}
-	
-	// Парсим JSON-ответ (упрощённо)
-	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(response), &result); err != nil {
-		return map[string]interface{}{
-			"raw_response": response,
-			"parse_error":  err.Error(),
-		}, nil
-	}
-	
-	return result, nil
 }
 
 // IsAvailable проверяет доступность Ollama
@@ -167,5 +152,5 @@ func (c *Client) IsAvailable() bool {
 		return false
 	}
 	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	return resp.StatusCode == 200
 }
